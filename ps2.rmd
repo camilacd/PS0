@@ -1,0 +1,626 @@
+---
+title: "Problem Set 2"
+author: "Camila Carrasco"
+date: "01/13/2018"
+output: 
+  html_document:
+    number_sections: true
+---
+
+- Stackoverflow account user: 9174147
+- Github id: camilacd
+
+for rank:
+if x is not numeric: as.numeric(x)
+
+wrapping the code makes it to print
+
+http://rpubs.com/anaraldy/161294
+https://www.nateday.me/r4ds_exercises.html
+https://github.com/maxconway/r4ds_solutions/blob/master/transform_solutions.Rmd
+https://github.com/cimentadaj/R4DS-Solutions/blob/master/Ch3.Rmd
+http://r4ds.had.co.nz/workflow-scripts.html
+https://www2.stat.duke.edu/courses/Spring16/sta101.001/post/labs/intro_to_data.html
+
+
+# R for Data Science Exercises
+
+## Misc
+
+```{r} 
+library(tidyverse)
+library(nycflights13)
+```
+
+## Section 5.6.7
+
+**1. Calculate the number of flights per carrier in reverse alphabetical order**
+
+```{r}
+flights %>%
+  group_by(carrier) %>%
+  summarise(n = n()) %>%
+  arrange(desc(carrier))
+
+```
+
+**2. Brainstorm at least 5 different ways to assess the typical delay characteristics of a group of flights. Write the dplyr code which calculates this delay measure separately by airline. It might be helpful to consider the following scenarios**:
+
+```{r}
+delays_summary <- group_by(flights,carrier) %>% summarise(n_flights = n(),
+                                                                pct_on_time = sum((arr_time == sched_arr_time)/n_flights, na.rm = TRUE), #on time
+                                                                pct_early = sum((arr_time < sched_arr_time)/n_flights, na.rm = TRUE), #early
+                                                                pct_late = sum((arr_time > sched_arr_time)/n_flights, na.rm = TRUE), #late
+                                                                pct_15m_early = sum(sched_arr_time - arr_time <= 15, na.rm = TRUE)/n_flights,
+                                                                pct_15m_late = sum(arr_time - sched_arr_time > 15, na.rm = TRUE)/n_flights,
+                                                                pct_20m_early = sum(sched_arr_time - arr_time <= 20, na.rm = TRUE)/n_flights,
+                                                                pct_20m_late = sum(arr_time - sched_arr_time > 20, na.rm = TRUE)/n_flights,
+                                                                pct_30m_early = sum(sched_arr_time - arr_time <= 30, na.rm = TRUE)/n_flights,
+                                                                pct_30m_late = sum(arr_time - sched_arr_time > 30, na.rm = TRUE)/n_flights,
+                                                                pct_2h_early = sum(arr_time - sched_arr_time <= 120, na.rm = TRUE)/n_flights,
+                                                                pct_2h_late = sum(arr_time - sched_arr_time > 120, na.rm = TRUE)/n_flights)
+delays_summary
+```
+
+- A flight is 15 minutes early 50% of the time, and 15 minutes late 50% of the time.
+```{r}
+delays_summary %>%
+  filter(pct_15m_early == 0.5, pct_15m_late == 0.5)
+```
+- A flight is always 20 minutes late.
+```{r}
+delays_summary %>%
+  filter(pct_20m_late == 1)
+```
+
+- A flight is 30 minutes early 50% of the time, and 30 minutes late 50% of the time. 
+```{r}
+delays_summary %>%
+  filter(pct_30m_late == 0.5 & pct_30m_early==0.5 )
+```
+
+- 99% of the time a flight is on time. 1% of the time it’s 2 hours late.
+```{r}
+delays_summary %>%
+  filter(pct_on_time == 0.99 & pct_2h_late == 0.01)
+```
+
+**3. Which is more important from a passengers’ perspective: arrival delay or departure delay? Explain why you think this is a better measure. Regardless of your answer, please use arrival delay for the rest of the problem set (so that the TAs can check your answers).**
+
+What matters the most is the arrival delay. Passengers are already at the airport if there is a departure delay, so besides getting bored and anxious, there is no significative cost involved (unless they have to spend the night in an hotel close to the airport). On the other hand, passengers usually have plans and arrangements for the arrival (business meetings, transportation services, accommodations, dinner plans, etc...), that can't be changed in such short notice.
+
+**4. Come up with another approach that will give you the same output as not_cancelled %>% count(dest) and not_cancelled %>% count(tailnum, wt = distance) (without using count()).**
+
+First approach
+```{r}
+not_cancelled <-
+  flights %>% 
+  filter(!is.na(dep_delay), !is.na(arr_delay))
+
+not_cancelled %>%
+  count(dest)
+
+not_cancelled %>%
+  count(tailnum, wt = distance)
+```
+
+Alternative approach
+```{r}
+not_cancelled <- filter(flights, !is.na(dep_delay), !is.na(arr_delay))
+
+not_cancelled %>%
+  group_by(dest) %>%
+  tally()
+
+not_cancelled %>%
+  group_by(tailnum) %>%
+  summarise(n = sum(distance))
+```
+
+**5. Our definition of cancelled flights (is.na(dep_delay) | is.na(arr_delay) ) is slightly suboptimal. Why? Which is the most important column?**
+
+If we're focusing on the arrivals only, this definition would consider also the flights that have a missing value for the departure delay and not the arrival.
+
+Going further, it can be the case, where one of the variables is missing but the flight is not cancelled. From the combinations between departed and arrived, we can observe that some flights departed but they don't have data for their arrival (1175), maybe they were re-routed. For the contrary, there are no flights that have data for their arrival but no departure. 
+
+```{r}
+flights %>%
+    group_by(not_departed = is.na(dep_delay), not_arrived = is.na(arr_delay)) %>%
+    summarise(n=n())
+
+```
+
+**6. Make a histogram with the proportion of flights that are cancelled each day. Is there a pattern? Is the proportion of cancelled flights related to the average delay?**
+
+
+
+flights %>%
+  group_by(year, month, day) %>%
+  cancelled=as.numeric(sum(is.na(flights$arr_delay)))%>%
+  summarise(prop_cancelled = cancelled/n())
+  h = hist(prop_cancelled)
+  h$density = h$counts/sum(h$counts)*100
+  plot(h,freq=FALSE)
+
+ggplot(flights, aes(x = prop_cancelled, y=count())) +labs(x="proportion of flights delayed per day", y="frequency (number of days)")
+  geom_histogram()
+
+
+flights %>%
+  group_by(day) %>%
+  summarise(prop_canceled = sum(is.na(arr_delay)) / n(),
+            avg_delay = mean(arr_delay, na.rm = TRUE)) %>%
+  ggplot(aes(x = day, y = prop_canceled)) +
+  geom_col()
+
+flights %>%
+  group_by(day) %>%
+  summarise(prop_canceled = sum(is.na(arr_delay)) / n(),
+            avg_delay = mean(arr_delay, na.rm = TRUE)) %>%
+  ggplot(aes(x = day, y = avg_delay)) +
+  geom_col()
+
+
+flights_hist <- flights[,c("hour")]
+flights_nodelay <-subset(flights_hist,subset = (flights$dep_delay <= 0))$hour
+flights_ontime <-subset(flights_hist,subset = (flights$dep_delay == 0))$hour
+
+med <- median(flights,na.rm=T)
+mn <- mean(flights,na.rm=T) 
+
+hist(flights, main = "Number of flights per hour", xlab = "Hour", ylab = "Amount of flights", xlim = c(0,24), ylim = c(0, 20000), col = "lightskyblue3")
+hist(flights_nodelay, xlim = c(0,24), ylim = c(0, 20000), col = "deepskyblue3",add=T)
+hist(flights_ontime, xlim = c(0,24), ylim = c(0, 20000), col = "darkblue",add=T)
+box()
+legend('topleft',c('Flights','Flights with no delay', 'Flights as scheduled'),
+        fill = c("lightskyblue3", "deepskyblue3","darkblue"), bty = 'n',
+        border = NA)
+
+abline(v = med, col = "red", lwd = 3)
+text(x = 16, y = 18000,labels="median", col = "red")
+abline(v = mn, col = "violet", lwd = 3)
+text(x = 12, y = 18000, labels="mean", col = "violet")
+
+
+
+hist(flights$dep_delay, main = "Distribution of flight departure delays",xlab = "Departure delays", ylab = "Frequency")
+
+median(flights$dep_delay,na.rm=T)
+
+
+
+```{r}
+flights %>%
+  group_by(day) %>%
+  summarise(cancelled = mean(is.na(dep_delay)),
+            mean_dep = mean(dep_delay, na.rm = T),
+            mean_arr = mean(arr_delay, na.rm = T)) %>%
+  ggplot(aes(y = cancelled)) +
+  geom_point(aes(x = mean_dep), colour = "green") +
+  geom_point(aes(x = mean_arr), colour = "orange") +
+  ggtitle("Relationship between cancelled flights and average delay per day")+
+  labs(x = "Average delay per day", y = "Cancelled flights per day")
+```
+Yes, there is a positive relationship between the number of cancelled flights and the average delay per day.
+
+**7. Calculate average delays by carrier. Create a variable which ranks carriers from worst to best, where 1 is the worst rank.**
+
+```{r}
+delayed_carriers<- flights %>%
+  group_by(carrier) %>%
+  summarise(avg_delay = mean(arr_delay, na.rm = TRUE))%>%
+  mutate(rank=rank(desc(avg_delay)))
+  arrange(delayed_carriers, rank)
+```
+
+**8. Calculate average delays by destination for flights originating in NYC. Create a variable which ranks destinations from worst to best, where 1 is the worst rank.**
+
+```{r}
+delayed_dest<- flights %>%
+  group_by(dest) %>%
+  summarise(avg_delay = mean(arr_delay, na.rm = TRUE))%>%
+  mutate(rank=rank(desc(avg_delay)))
+  arrange(delayed_dest, rank)
+```
+
+## Section 5.7.1
+
+**1. Which plane (tailnum) has the most minutes of delays total? How many planes are delayed every time they appear in the dataset?**
+
+```{r}
+(delayed_flights <-group_by(flights, tailnum) %>%
+summarise(total_arr_delay = sum(arr_delay, na.rm=TRUE), flights_ = n()) %>%
+arrange(desc(total_arr_delay)))
+
+```
+
+
+**2. What time of day should you fly if you want to avoid delays as much as possible?**
+
+Assuming that the type of delays that we want to avoid are those higher than 15 minutes, we can see that before noon and after 10pm would be the best bet. 
+
+```{r}
+flights %>%
+    ggplot(aes(x=factor(hour), fill=arr_delay>15)) + geom_bar()
+```
+
+
+**3. For each destination, compute the total minutes of delay. For each, flight, compute the proportion of the total delay for its destination.**
+
+```{r}
+flights %>%
+  group_by(dest) %>%
+  filter(!is.na(dep_delay)) %>%
+  summarise(tot_mins_delay = sum(dep_delay[dep_delay > 0]))
+
+flights %>%
+  filter(!is.na(dep_delay)) %>%
+  group_by(tailnum, dest) %>%
+  summarise(prop = sum(dep_delay > 0)/sum(dep_delay[dep_delay > 0]), number = n()) %>%
+  arrange(desc(prop))
+```
+
+
+**4. Delays are typically temporally correlated: even once the problem that caused the initial delay has been resolved, later flights are delayed to allow earlier flights to leave. Use lag() to explore how the delay of a flight is related to the delay of the immediately preceding scheduled flight. Make a plot which shows the relationship between a flight’s delay and the delay of the immediately preceding scheduled flight. You have a lot of data, so think carefully about how to develop a plot which is not too cluttered.**
+
+Yes, those variables are correlated. As we can observe in a simple lm regression, we have that if the previous flight was delayed, the departure delay of the current flight increases (and it is statistically significant).
+
+```{r}
+flights %>%
+  mutate(new_sched_dep_time = lubridate::make_datetime(year, month, day, hour, minute)) %>%
+  group_by(origin) %>%
+  arrange(new_sched_dep_time) %>%
+  mutate(prev_flight_dep_delay = lag(dep_delay)) %>%
+  ggplot(aes(x=prev_flight_dep_delay, y= dep_delay), na.omit()) + geom_point(alpha = 1/10)
+
+flights %>% #doing a zoom to the values lower than 500, where the data is concentrated
+  mutate(new_sched_dep_time = lubridate::make_datetime(year, month, day, hour, minute)) %>%
+  arrange(new_sched_dep_time) %>%
+  mutate(prev_time = lag(dep_delay)) %>%
+  filter(between(dep_delay, 0, 500), between(prev_time, 0, 500)) %>% 
+  select(origin, new_sched_dep_time, dep_delay, prev_time) %>%
+  ggplot(aes(dep_delay, prev_time)) + geom_point(alpha = 1/10)
+
+flights %>%
+  mutate(new_sched_dep_time = lubridate::make_datetime(year, month, day, hour, minute)) %>%
+  group_by(origin) %>%
+  arrange(new_sched_dep_time) %>%
+  mutate(prev_flight_dep_delay = lag(dep_delay)) %>%
+  lm(dep_delay ~ prev_flight_dep_delay,.) %>% summary()
+```
+
+**5. Look at each destination. Can you find flights that are suspiciously fast? (i.e. flights that represent a potential data entry error). Compute the air time a flight relative to the shortest flight to that destination. Which flights were most delayed in the air?**
+
+We can observe the minimum, mean and maximum air time by origin and destinations. For routes that are covered by two or more flights, we have that the shortest air time relative to its mean, is a flight between LGA and BOS, that was 21 min instead of 37.8 (mean). On the contrary, the longest flight relative to its mean was a flight from JFK to ACK that lasted 141 min instead of 42 (mean). 
+
+There is no hard evidence that there are some flights that are suspiciously fast. 
+
+```{r}
+flights %>%
+  group_by(origin, dest) %>%
+  summarise(mean_time = mean(air_time, na.rm=TRUE), 
+            min_time=min(air_time, na.rm = TRUE), max_time=max(air_time, na.rm=TRUE), 
+            shortest=(mean_time-min_time)/mean_time, 
+            longest=(max_time-mean_time)/mean_time,
+            n=n())%>%
+  arrange(-longest) %>%
+  filter(n>1) %>%
+  select(origin, dest, mean_time, min_time, max_time, shortest, longest, n)
+```
+
+```{r}
+flights %>% group_by(dest) %>% 
+  mutate(relative_delay =arr_delay - mean(arr_delay)) %>% 
+  select(flight, dest, arr_delay, relative_delay)
+```
+
+
+**6. Find all destinations that are flown by at least two carriers.**
+
+```{r}
+flights %>%
+  group_by(dest) %>%
+  filter(n_distinct(carrier)>=2) %>%
+  summarise(n = n_distinct(carrier)) %>%
+  arrange(-n)
+```
+
+
+**7. For each plane, count the number of flights before the first delay of greater than 1 hour.**
+
+```{r}
+flights %>%
+    mutate(dep_date = lubridate::make_datetime(year, month, day)) %>%
+    group_by(tailnum) %>%
+    arrange(dep_date) %>%
+    filter(!cumany(arr_delay>60)) %>%
+    tally(sort = TRUE)
+```
+
+## Section 7.3 and 7.4
+
+```{r}
+library(ggplot2)
+```
+
+7.3
+
+**1. Explore the distribution of price. Do you discover anything unusual or surprising? (Hint: Carefully think about the binwidth and make sure you try a wide range of values.)**
+
+The distribution shows that there are less diamonds for higher prices, which is what is expected (more expensive diamonds are more exclusive and rare). What is unusual, is that there are gaps in the data (for some prices, there are no diamonds) 
+
+```{r}
+diamonds %>% summarise(min(price), max(price), mean(price), mode(price), median(price))
+
+group_by(diamonds, price)%>%
+  summarise(n=n())%>%
+arrange(price)
+
+ggplot(diamonds, aes(x = price), xlim=c(0,5000))+geom_histogram(colour="red", binwidth=0.5)
+
+ggplot(diamonds, aes(x = price), xlim=c(0,5000))+geom_histogram(colour="red", binwidth=0.5)+
+  coord_cartesian(xlim = c(0, 5000))
+```
+
+**2. How many diamonds are 0.99 carat? How many are 1 carat? What do you think is the cause of the difference?**
+
+There are 23 diamonds that are 0.99 carat and 1,558 that are 1 carat. It can be that most of the times the carat is rounded to 1 if its 0.99 but some people are more exact and put 0.99.
+
+```{r}
+diamonds %>%
+  filter(carat %in% c(0.99, 1)) %>%
+  count(carat)
+```
+
+**3. Compare and contrast coord_cartesian() vs xlim() or ylim() when zooming in on a histogram. What happens if you leave binwidth unset? What happens if you try and zoom so only half a bar shows?**
+
+coord_cartesian() refers to the cartesian coordinates, and it allows to set limits on the coordinate system to zoom in the plot. However, it doesn't change the underlying data like setting limits on a scale will. Source: <http://ggplot2.tidyverse.org/reference/coord_cartesian.html>
+
+In particular, setting the limits on a scale converts all values outside the range to NA: using xlim() and y(lim) throws away the data outside the limits. Here, the zero is not included.
+
+If the binwidth is unset, `stat_bin()` picks the value. 
+If you try and zoom only half a bar shows, it cut the bar by half (you could use expand=FALSE to turn off expansion with the default limits). 
+
+Using xlim delets observations at 0, while coord_cartesian doesn't. 
+
+```{r}
+diamonds %>%
+  ggplot(aes(y)) +
+  geom_histogram() +
+  coord_cartesian(xlim =c(0,50), ylim=c(0,50))
+
+diamonds %>%
+  ggplot(aes(y)) +
+  geom_histogram() +
+  xlim(c(0, 50)) +
+  coord_cartesian(y = c(0, 50))
+```
+
+7.4
+
+**1. What happens to missing values in a histogram? What happens to missing values in a bar chart? Why is there a difference?**
+
+As we discovered before, the data shows some gaps with the histogram. This was caused by the missing values. 
+
+```{r}
+diamonds %>%
+  ggplot(aes(price)) +
+  geom_histogram(bins = 1000)
+
+diamonds %>%
+  ggplot(aes(price)) +
+  geom_bar(bins = 1000)
+
+diamonds %>%
+ggplot(aes(price)) + 
+  geom_bar(na.rm = TRUE)
+```
+
+**2. What does na.rm = TRUE do in mean() and sum()?**
+
+We know that sum() returns the sum of all the values present in its arguments. The default for this function is na.rm=FALSE. If na.rm is TRUE an NA or NaN value in any of the arguments will be ignored. The same happens to mean().
+
+## Section 7.5.2.1
+
+Question: How does seasonality in delays vary by place?
+
+1. First pass: make a data frame with average delay by destination and by month of the year. Use geom_tile() to make a plot of this data frame. What makes the plot difficult to read? (List as many issues as possible.)
+
+This plot has too many tiles (to many destinations) so it is hard to read. 
+The y-axis' text marks are one over the other. The other problem is that if we want to test seasonality variations by place, we should group different airports by their state or region (midwest airports in winter will have more delays than average, etc)
+
+```{r}
+flights %>%
+  group_by(dest, month) %>%
+  filter(!is.na(dep_delay)) %>%
+  mutate(med_delay = median(dep_delay)) %>%
+  ggplot(aes(x = as.factor(month), y = dest, fill = med_delay)) +
+  geom_tile()+
+    labs(x = "Month", y = "Airport Destination", fill = "Departure Delay (min)")
+```
+
+2. Make a new plot which resolves at least one (and ideally all) of the issues that you raised, but still answers the broad question “How does seasonality in delays vary by place?” One thing you should be sure to do is develop a strategy for limiting the number of categories on the y-axis to 20.
+
+```{r}
+delayed_dest<- flights %>%
+  group_by(dest) %>%
+  summarise(avg_delay = mean(arr_delay, na.rm = TRUE))%>%
+  mutate(rank=rank(desc(avg_delay)))
+  arrange(delayed_dest, rank)
+
+dest_selection <- subset(delayed_dest, rank <= 20)
+dest_selection
+
+```
+
+
+flights %>%
+  group_by(dest, month) %>%
+  filter(!is.na(dep_delay))%>%
+  subset(dest=="MCI"|"MHT"|"MSN"|"OKC"|"OMA"|"PVD"|"RIC"|"SAV"|"TUL"|"TYS"|"ALB"|"BHM"|"CAE"|"CAK"|"CRW"|"CVG"|"DSM"|"GRR"|"GSP"|"JAC") %>%
+  mutate(med_delay = median(dep_delay)) %>%
+  ggplot(aes(x = as.factor(month), y = dest, fill = med_delay)) +
+  geom_tile()+
+    labs(x = "Month", y = "Airport Destination", fill = "Departure Delay (min)")
+
+
+
+
+3. Write out in words the answer to the question. Be sure that these are conclusions that a reader can draw directly from your second plot rather than things you happened to learn along the way.
+
+
+
+
+## Public Sector Application: Flight Data
+
+```{r}
+one <- read.csv("flightsIL/1065640122_T_ONTIME.csv")
+two <- read.csv("flightsIL/1065640122_T_ONTIME-2.csv")
+three <- read.csv("flightsIL/1065640122_T_ONTIME-3.csv")
+four <- read.csv("flightsIL/1065640122_T_ONTIME-4.csv")
+five <- read.csv("flightsIL/1065640122_T_ONTIME-5.csv")
+six <- read.csv("flightsIL/1065640122_T_ONTIME-6.csv")
+seven <- read.csv("flightsIL/1065640122_T_ONTIME-7.csv")
+eight <- read.csv("flightsIL/1065640122_T_ONTIME-8.csv")
+nine <- read.csv("flightsIL/1065640122_T_ONTIME-9.csv")
+ten <- read.csv("flightsIL/1065640122_T_ONTIME-10.csv")
+eleven <- read.csv("flightsIL/1065640122_T_ONTIME-11.csv")
+twelve <- read.csv("flightsIL/1065640122_T_ONTIME-12.csv")
+
+chi.flights <- bind_rows(one, two, three, four, five, six, seven, eight, nine, ten, eleven, twelve)
+```
+
+An international trade organization is hosting a two-day convention in Chicago in 2019. The mayor’s tourism office has asked for some planning help based on historical data from 2016. Use the same data which you analyzed for PS1, limiting the sample to flights from Midway and Ohare.
+For each question, please follow the four-part approach laid out in lecture. I have given you the question (step 1). You should write out your query (step 2), show the plot from this query (step 3), and write out the answer to the question in a sentence (step 4).
+
+```{r}
+(selected_flights<- subset(chi.flights, (chi.flights$DEST_AIRPORT_ID==13930 | chi.flights$DEST_AIRPORT_ID==13232 | chi.flights$ORIGIN_AIRPORT_ID==13930 | chi.flights$ORIGIN_AIRPORT_ID==13232)))
+
+```
+
+
+```{r}
+library(dplyr)
+```
+
+**1. When are average arrival delays (measured using the arrival delay variable) the lowest? When are are least 80% of flights on-time? Make a single plot that answers both questions and write a sentence (or two) that answers these questions.**
+
+
+```{r}
+arrival_delays <- selected_flights %>%
+  group_by(MONTH, DAY_OF_MONTH)%>%
+  summarise(av_delay = mean(ARR_DELAY, na.rm = TRUE),
+            ontime = mean(ARR_DELAY <= 0, na.rm = TRUE),
+            lowest = min(av_delay)) %>%
+  mutate(ontime_80 = ontime > 0.8) %>%
+  arrange(av_delay)
+
+ggplot(arrival_delays, aes(x = factor(DAY_OF_MONTH), fill = ontime_80)) +
+  geom_bar() 
+```
+
+We can see that average arrival delays are the lowest the first week of the month then the third week. 
+
+**2. When are flights to Chicago most common? Make a plot to support your answer and write a sentence to answer the question.**
+
+- By month (season): Summer is the time of the year with the most fligths (first, July, then August and June). Winter is the least preferred (December). 
+- By Day of the Week: Fridays are the most common day to travel, then Thursdays, and Wednesdays. Saturday and Sunday, the least preferred.
+- By hour of the day: The most common is to arrive to Chicago around 6pm.
+- 
+```{r}
+flights_to_CHI <- selected_flights %>%
+  filter(DEST_CITY_NAME == "Chicago, IL") %>%
+  group_by(MONTH) %>%
+  summarise(n_flights = n()) %>%
+  arrange(desc(n_flights))
+
+flights_to_CHI
+
+
+```
+
+**3. What date do you recommend they have the convention? Take into account both the number of flights to Chicago and that people would like to arrive in Chicago on-time and not get delayed on the way in (don’t worry about delays on the way home). Why did you recommend this date? Write a few sentences.**
+
+I'd suggest to do the convention June 19th (month most preferred to people and that day has an average delay of -8.2, that is flights arrive earlier than scheduled).
+
+```{r}
+selected_flights %>% 
+  group_by(MONTH, DAY_OF_MONTH) %>% 
+  filter(rank(desc(ARR_DELAY)), DEST_CITY_NAME == "Chicago, IL" )%>% 
+  summarize(no_flights = n(),
+            av_delay = mean(ARR_DELAY, na.rm = TRUE))%>%
+  arrange(av_delay)
+
+```
+
+1. In lecture, we covered the idea of “basic” plots and “sophisticated” plots. Make a “basic” plot which provides just the minimal amount of information needed to support your written recommendation. 
+
+```{r}
+#basic plot
+flights_to_chicago <- selected_flights %>%
+  filter(DEST_CITY_NAME == "Chicago, IL") %>%
+  group_by(MONTH) %>%
+  summarise(no_flights = n()) %>%
+  arrange(desc(no_flights))
+  
+  ggplot(flights_to_chicago, aes(x = MONTH, y = no_flights)) +
+  geom_point()
+```
+
+2. Make a “sophisticated” plot as well that contains more information about flight delays. What are
+the sub-messages in the “sophisticated” plots that are not in the “basic” plot? If you could submit
+only one of the two plots to the mayor’s office, which would you submit and why?
+
+The more sophisticated include more information. If they are well constructed, they are preferred to basic plots. 
+
+```{r}
+best_date <- selected_flights %>%
+  filter(DEST_CITY_NAME == "Chicago, IL") %>%
+  group_by(MONTH) %>%
+  summarise(no_flights = n(),
+            av_delay = mean(ARR_DELAY, na.rm = TRUE)) #%>%
+
+  ggplot(best_date, aes(x = MONTH, y = av_delay, color= no_flights)) +
+  geom_point() 
+```
+```
+
+3. You have (hopefully) reached the frontier of what you can do to answer this question with the data that you have. If you wanted to push the frontier further of figuring out when the convention should be, what are two other public datasets that would be useful in making a decision? Include links to the datasets and the names of the variables you would analyze. We do not expect you to actually analyze these other datasets.
+
+
+
+4. Now that you’ve decided when it will happen, please give the attendees a recommendation of which
+airline to take in order to arrive on time. The attendees are not price-sensitive, so you don’t need to worry about cost. Make a “basic” plot and a “sophisiticated” plot to support your recommendation. Which plot do you prefer and why?
+
+
+best_carrier <- selected_flights %>%
+  filter(MONTH ==10) %>%
+  group_by(UNIQUE_CARRIER) %>%
+  summarise(delay_carrier = mean(ARR_DELAY, na.rm = TRUE),
+            no_flights = n())
+
+best_carrier
+
+ggplot(best_carrier) +
+  geom_point(aes(x =UNIQUE_CARRIER, y= no_flights))
+
+ggplot(best_carrier) +
+  geom_point(aes(x = UNIQUE_CARRIER, y= no_flights, color= delay_carrier))
+
+
+
+5. The trade organization sends an update. Some of its most important members are in Savannah, which is an airport with a ton of delayed flights to Chicago. Does that change your recommendation of when to host the convention? Make a plot that supports your new recommendation and shows why it is superior to your old recommendation.
+
+
+
+Savannah <- selected_flights %>% 
+  filter(ORIGIN_CITY_NAME == "Savannah, GA") %>% 
+  group_by(MONTH) %>% 
+  summarise(av_delay = mean(ARR_DELAY, na.rm = TRUE),
+            no_flights = n())
+ggplot(data = Savannah) + 
+  geom_point(aes(x=MONTH, y = av_delay, color = no_flights))
+
+
+
+
